@@ -1,5 +1,9 @@
 # Movie Directory
 
+Electron app is published to a different branch: electron_macos_10_12_x86 for max compatibility.
+
+The main branch contains a PyQt6 app (10.13 or later), requires PyQt6 
+
 A PyQt6-based media center app to manage your locally stored movie files. Features include:
 - Automatic movie metadata fetching from IMDB
 - Movie thumbnails and information display
