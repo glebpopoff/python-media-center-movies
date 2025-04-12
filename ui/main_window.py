@@ -319,7 +319,10 @@ class MainWindow(QMainWindow):
             if 'title' not in movie_info:
                 fetch_btn = QPushButton("Fetch from IMDB")
                 fetch_btn.setMaximumWidth(150)
-                fetch_btn.clicked.connect(lambda: self.fetch_movie_info(movie_info['name']))
+                # Use lambda to pass both movie name and button instance
+                fetch_btn.clicked.connect(
+                    lambda checked, btn=fetch_btn: self.fetch_movie_info(movie_info['name'], btn)
+                )
                 info_layout.addWidget(fetch_btn)
 
             movie_layout.addLayout(info_layout)
@@ -344,15 +347,37 @@ class MainWindow(QMainWindow):
             if child.widget():
                 child.widget().deleteLater()
 
-    def fetch_movie_info(self, movie_name: str):
+    def fetch_movie_info(self, movie_name: str, fetch_button: QPushButton = None):
         """Fetch IMDB info for a single movie."""
+        if fetch_button:
+            fetch_button.setEnabled(False)
+            fetch_button.setText("Fetching...")
+
         try:
             info = self.imdb.get_movie_info(movie_name, force_update=True)
             if info:
-                # Refresh the UI by rescanning the current category
-                self.scan_directory()
+                # Find and update the existing movie widget
+                for i in range(self.movies_layout.count()):
+                    widget = self.movies_layout.itemAt(i).widget()
+                    if widget and widget.property('movie_name') == movie_name.lower():
+                        # Remove the old widget
+                        widget.deleteLater()
+                        self.movies_layout.removeWidget(widget)
+                        # Add updated movie widget
+                        movie_info = {'name': movie_name}
+                        movie_info.update(info)
+                        self.add_movie(movie_info)
+                        break
+            else:
+                if fetch_button:
+                    fetch_button.setText("Retry Fetch")
+                    fetch_button.setEnabled(True)
+
         except Exception as e:
             print(f"Error fetching movie info: {str(e)}")
+            if fetch_button:
+                fetch_button.setText("Retry Fetch")
+                fetch_button.setEnabled(True)
 
     def filter_movies(self, text):
         text = text.lower()

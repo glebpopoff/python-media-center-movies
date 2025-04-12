@@ -1,9 +1,11 @@
 from imdb import IMDb
-import requests
+from typing import Dict, Optional, List
 from pathlib import Path
-import logging
 from datetime import datetime
-from typing import Dict, Optional
+import requests
+import logging
+import json
+import re
 import os
 
 class IMDBFetcher:
