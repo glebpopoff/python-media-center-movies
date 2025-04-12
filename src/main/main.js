@@ -205,14 +205,15 @@ ipcMain.handle('get-movie-folders', async (event, categoryPath) => {
     try {
         console.log('Reading category path:', categoryPath);
         if (!categoryPath) {
-            throw new Error('Category path is undefined');
+            console.warn('Category path is undefined');
+            return [];
         }
 
         // Check if category directory exists
         try {
             await fsPromises.access(categoryPath);
-        } catch (err) {
-            console.error('Category directory does not exist:', categoryPath);
+        } catch (error) {
+            console.warn('Category directory does not exist:', categoryPath);
             return [];
         }
 
@@ -220,61 +221,46 @@ ipcMain.handle('get-movie-folders', async (event, categoryPath) => {
         const items = await fsPromises.readdir(categoryPath, { withFileTypes: true });
         console.log('Found items in category:', items.length);
 
+        // Get only directories
+        const directories = items.filter(item => item.isDirectory());
+        console.log('Found directories:', directories.length);
+
         // Process each directory
-        const movieFolders = await Promise.all(items
-            .filter(item => item.isDirectory())
-            .map(async folder => {
+        const movieFolders = [];
+        for (const dir of directories) {
+            try {
+                const folderPath = path.join(categoryPath, dir.name);
+                console.log('Processing folder:', folderPath);
+
+                // Check for poster
+                const posterPath = path.join(folderPath, 'poster.jpg');
+                let hasPoster = false;
                 try {
-                    const folderPath = path.join(categoryPath, folder.name);
-                    console.log('Processing folder:', folderPath);
-
-                    // Read movie folder contents
-                    const files = await fsPromises.readdir(folderPath);
-                    const movieFile = files.find(file => isMovieFile(file));
-                    
-                    // Check for cached poster
-                    const posterPath = posterCache.get(folder.name);
-                    let posterExists = false;
-
-                    if (posterPath) {
-                        try {
-                            await fsPromises.access(posterPath);
-                            posterExists = true;
-                            console.log('Found cached poster:', posterPath);
-                        } catch (err) {
-                            console.log('Removing invalid cache entry for:', folder.name);
-                            posterCache.delete(folder.name);
-                        }
-                    }
-
-                    const result = {
-                        name: folder.name,
-                        path: folderPath,
-                        movieFile: movieFile ? path.join(folderPath, movieFile) : null,
-                        posterPath: posterExists ? posterPath : null
-                    };
-                    console.log('Processed movie folder:', result);
-                    return result;
+                    await fsPromises.access(posterPath);
+                    hasPoster = true;
                 } catch (err) {
-                    console.error('Error processing folder:', folder.name, err);
-                    return {
-                        name: folder.name,
-                        path: path.join(categoryPath, folder.name),
-                        movieFile: null,
-                        posterPath: null
-                    };
+                    // Poster doesn't exist
                 }
-            }));
 
-        console.log('Successfully processed all folders');
+                movieFolders.push({
+                    name: dir.name,
+                    path: folderPath,
+                    posterPath: hasPoster ? posterPath : null
+                });
+            } catch (err) {
+                console.error('Error processing folder:', dir.name, err);
+                // Skip failed folders
+            }
+        }
+
+        console.log('Successfully processed folders:', movieFolders.length);
         return movieFolders;
     } catch (error) {
         console.error('Error in get-movie-folders:', error);
-        throw error;
+        return []; // Return empty array on error
     }
 });
 
-// Handle poster fetching
 ipcMain.handle('fetch-poster', async (event, { folderName, folderPath, forceRefetch }) => {
     // Check cache unless force refetch is requested
     if (!forceRefetch) {

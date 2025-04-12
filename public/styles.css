@@ -112,11 +112,53 @@ button:hover {
     background-color: #218838;
 }
 
-.movies-grid {
+.movie-controls {
+    margin-bottom: 20px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.movie-filter {
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 14px;
+    flex-grow: 1;
+    max-width: 300px;
+}
+
+.movie-filter:focus {
+    outline: none;
+    border-color: #007bff;
+}
+
+progress {
+    flex-grow: 1;
+    height: 10px;
+    border-radius: 5px;
+    margin-left: 10px;
+}
+
+progress::-webkit-progress-bar {
+    background-color: #f0f0f0;
+    border-radius: 5px;
+}
+
+progress::-webkit-progress-value {
+    background-color: #007bff;
+    border-radius: 5px;
+}
+
+.movies-container {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: 20px;
+}
+
+.movies-grid {
     padding: 20px;
+    overflow-y: auto;
     margin: 0 auto;
 }
 
