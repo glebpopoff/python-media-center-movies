@@ -188,6 +188,14 @@ button:hover {
     color: #666;
 }
 
+.action-button.imdb i {
+    color: #f5c518;
+}
+
+.action-button.imdb.fetched i {
+    color: #45b245;
+}
+
 .movie-controls button {
     flex: 1;
     padding: 8px;
@@ -233,28 +241,6 @@ button:hover {
 
 .no-movies {
     color: #666;
-}
-
-
-.movie-info {
-    flex: 1;
-}
-
-.movie-title {
-    margin: 0 0 10px 0;
-    font-size: 18px;
-    font-weight: 600;
-}
-
-.movie-details {
-    font-size: 14px;
-    color: #666;
-    margin-bottom: 15px;
-}
-
-.movie-buttons {
-    display: flex;
-    gap: 10px;
 }
 
 .movie-buttons button {

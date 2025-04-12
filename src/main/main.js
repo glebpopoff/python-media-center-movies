@@ -1,16 +1,29 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
-const fs = require('fs').promises;
+const fs = require('fs');
+const fsPromises = fs.promises;
 const { exec } = require('child_process');
 const Store = require('electron-store');
-const IMDB = require('imdb-api');
-const https = require('https');
+const fetch = require('node-fetch');
+const cheerio = require('cheerio');
+
+// Store for caching poster paths
+const posterCache = new Store({
+    name: 'poster-cache',
+    defaults: {}
+});
 
 let mainWindow;
 const store = new Store();
 
 // Supported video formats
 const VIDEO_FORMATS = ['.mp4', '.mkv', '.avi', '.mov', '.wmv'];
+
+// Helper function to check if a file is a movie
+function isMovieFile(filename) {
+    const movieExtensions = ['.mp4', '.mpeg4', '.avi', '.mkv'];
+    return movieExtensions.some(ext => filename.toLowerCase().endsWith(ext));
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -25,17 +38,17 @@ function createWindow() {
   mainWindow.loadFile('public/index.html');
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+    createWindow();
+
+    app.on('activate', function () {
+        if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
-  }
-});
-
-app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
   }
 });
 
@@ -148,41 +161,238 @@ async function scanDirectory(directory) {
 
 // IPC handlers
 ipcMain.handle('select-directory', async () => {
-    const result = await dialog.showOpenDialog({
-        properties: ['openDirectory']
-    });
+    try {
+        const result = await dialog.showOpenDialog({
+            properties: ['openDirectory'],
+            title: 'Select Movies Directory',
+            buttonLabel: 'Choose Directory',
+            message: 'Select the root directory containing your movie categories'
+        });
 
-    if (!result.canceled) {
-        return result.filePaths[0];
+        if (!result.canceled && result.filePaths.length > 0) {
+            const directory = result.filePaths[0];
+            console.log('Selected directory:', directory);
+            return directory;
+        }
+        return null;
+    } catch (error) {
+        console.error('Error selecting directory:', error);
+        throw error;
     }
-    return null;
 });
 
 ipcMain.handle('get-categories', async (event, directory) => {
-    if (!directory) return [];
-    return await getSubdirectories(directory);
+    try {
+        if (!directory) {
+            console.error('No directory provided');
+            return [];
+        }
+
+        console.log('Reading categories from:', directory);
+        const items = await fsPromises.readdir(directory, { withFileTypes: true });
+        const categories = items
+            .filter(item => item.isDirectory())
+            .map(item => item.name);
+        console.log('Found categories:', categories);
+        return categories;
+    } catch (error) {
+        console.error('Error reading categories:', error);
+        throw error;
+    }
 });
 
 ipcMain.handle('get-movie-folders', async (event, categoryPath) => {
     try {
         console.log('Reading category path:', categoryPath);
-        const items = await fs.readdir(categoryPath, { withFileTypes: true });
-        const movieFolders = items
+        if (!categoryPath) {
+            throw new Error('Category path is undefined');
+        }
+
+        // Check if category directory exists
+        try {
+            await fsPromises.access(categoryPath);
+        } catch (err) {
+            console.error('Category directory does not exist:', categoryPath);
+            return [];
+        }
+
+        // Read directory contents
+        const items = await fsPromises.readdir(categoryPath, { withFileTypes: true });
+        console.log('Found items in category:', items.length);
+
+        // Process each directory
+        const movieFolders = await Promise.all(items
             .filter(item => item.isDirectory())
-            .map(folder => ({
-                name: folder.name,
-                path: path.join(categoryPath, folder.name)
+            .map(async folder => {
+                try {
+                    const folderPath = path.join(categoryPath, folder.name);
+                    console.log('Processing folder:', folderPath);
+
+                    // Read movie folder contents
+                    const files = await fsPromises.readdir(folderPath);
+                    const movieFile = files.find(file => isMovieFile(file));
+                    
+                    // Check for cached poster
+                    const posterPath = posterCache.get(folder.name);
+                    let posterExists = false;
+
+                    if (posterPath) {
+                        try {
+                            await fsPromises.access(posterPath);
+                            posterExists = true;
+                            console.log('Found cached poster:', posterPath);
+                        } catch (err) {
+                            console.log('Removing invalid cache entry for:', folder.name);
+                            posterCache.delete(folder.name);
+                        }
+                    }
+
+                    const result = {
+                        name: folder.name,
+                        path: folderPath,
+                        movieFile: movieFile ? path.join(folderPath, movieFile) : null,
+                        posterPath: posterExists ? posterPath : null
+                    };
+                    console.log('Processed movie folder:', result);
+                    return result;
+                } catch (err) {
+                    console.error('Error processing folder:', folder.name, err);
+                    return {
+                        name: folder.name,
+                        path: path.join(categoryPath, folder.name),
+                        movieFile: null,
+                        posterPath: null
+                    };
+                }
             }));
 
-        console.log('Found movie folders:', movieFolders);
+        console.log('Successfully processed all folders');
         return movieFolders;
     } catch (error) {
-        console.error('Error reading movie folders:', error);
-        return [];
+        console.error('Error in get-movie-folders:', error);
+        throw error;
     }
 });
 
+// Handle poster fetching
+ipcMain.handle('fetch-poster', async (event, { folderName, folderPath, forceRefetch }) => {
+    // Check cache unless force refetch is requested
+    if (!forceRefetch) {
+        const cachedPath = posterCache.get(folderName);
+        if (cachedPath) {
+            try {
+                await fsPromises.access(cachedPath);
+                return { posterPath: cachedPath };
+            } catch (err) {
+                // Cached file doesn't exist, remove from cache
+                posterCache.delete(folderName);
+            }
+        }
+    }
+    try {
+        // Clean up folder name for search
+        const searchTitle = folderName
+            .replace(/\([^)]*\)/g, '') // Remove parentheses and content
+            .replace(/\[[^\]]*\]/g, '') // Remove brackets and content
+            .replace(/\.(mp4|avi|mkv|mpeg4)$/i, '') // Remove file extension
+            .replace(/[._]/g, ' ') // Replace dots and underscores with spaces
+            .trim();
+
+        console.log('Searching IMDB for:', searchTitle);
+        
+        // Search IMDB
+        const searchUrl = `https://www.imdb.com/find/?q=${encodeURIComponent(searchTitle)}`;
+        const headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5'
+        };
+
+        // Get search results
+        console.log('Fetching search results from:', searchUrl);
+        const searchResponse = await fetch(searchUrl, { headers });
+        if (!searchResponse.ok) throw new Error(`IMDB search failed: ${searchResponse.status}`);
+        
+        const searchHtml = await searchResponse.text();
+
+        // Save search results for debugging
+        const debugPath = path.join(folderPath, 'imdb_search.html');
+        await fsPromises.writeFile(debugPath, searchHtml);
+        console.log('Saved search results to:', debugPath);
+
+        const $ = cheerio.load(searchHtml);
+        
+        // Find first movie result
+        const movieLink = $('a[href*="/title/tt"]').first().attr('href');
+        console.log('Found movie link:', movieLink);
+        if (!movieLink) throw new Error('Movie not found on IMDB');
+
+        // Get movie page
+        const movieUrl = `https://www.imdb.com${movieLink}`;
+        console.log('Fetching movie page:', movieUrl);
+        
+        const movieResponse = await fetch(movieUrl, { headers });
+        if (!movieResponse.ok) throw new Error(`Failed to fetch movie page: ${movieResponse.status}`);
+        
+        const movieHtml = await movieResponse.text();
+
+        // Save movie page for debugging
+        const movieDebugPath = path.join(folderPath, 'imdb_movie.html');
+        await fsPromises.writeFile(movieDebugPath, movieHtml);
+        console.log('Saved movie page to:', movieDebugPath);
+
+        const $movie = cheerio.load(movieHtml);
+
+        // Find poster image
+        let posterUrl = $movie('div[data-testid="hero-media__poster"] img').attr('src');
+        if (!posterUrl) {
+            posterUrl = $movie('img[class*="ipc-image"]').attr('src');
+        }
+
+        if (!posterUrl) throw new Error('No poster found on IMDB');
+        console.log('Found poster URL:', posterUrl);
+
+        // Download poster
+        const imageResponse = await fetch(posterUrl);
+        if (!imageResponse.ok) throw new Error(`Failed to download poster: ${imageResponse.status}`);
+        
+        const imageBuffer = await imageResponse.buffer();
+        const posterPath = path.join(folderPath, 'poster.jpg');
+        await fsPromises.writeFile(posterPath, imageBuffer);
+
+        // Cache the poster path
+        posterCache.set(folderName, posterPath);
+        console.log('Saved poster to:', posterPath);
+
+        return { posterPath };
+    } catch (error) {
+        console.error('Error fetching poster:', error);
+        throw error;
+    }
+});
+
+// Helper function to download images
+async function downloadImage(url, filepath) {
+    try {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`Failed to download image: ${response.status}`);
+        }
+
+        const buffer = await response.buffer();
+        await fsPromises.writeFile(filepath, buffer);
+    } catch (error) {
+        console.error('Error downloading image:', error);
+        throw error;
+    }
+}
+
 ipcMain.handle('play-in-vlc', async (event, moviePath) => {
+    if (!moviePath) {
+        console.error('No movie file path provided');
+        return false;
+    }
+
     try {
         exec(`open -a VLC '${moviePath}'`, (error) => {
             if (error) {

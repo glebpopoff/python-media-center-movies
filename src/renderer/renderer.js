@@ -35,13 +35,24 @@ const config = {
 defaultDirectoryInput.value = config.defaultDirectory;
 autoScanCheckbox.checked = config.autoScan;
 
-// Load categories if directory is configured
-if (config.defaultDirectory) {
+// Check for default directory and load categories
+if (!config.defaultDirectory) {
+    const selectButton = document.createElement('button');
+    selectButton.className = 'action-button';
+    selectButton.innerHTML = 'Select Movies Directory';
+    selectButton.onclick = async () => {
+        const directory = await ipcRenderer.invoke('select-directory');
+        if (directory) {
+            config.defaultDirectory = directory;
+            store.set('defaultDirectory', directory);
+            updateCategories(directory);
+        }
+    };
+    moviesGrid.innerHTML = '';
+    moviesGrid.appendChild(selectButton);
+} else {
     console.log('Loading categories from:', config.defaultDirectory);
     updateCategories(config.defaultDirectory);
-} else {
-    console.log('No default directory configured');
-    moviesGrid.innerHTML = '<div class="no-movies">Please configure your movies directory in the Configuration tab</div>';
 }
 
 // Function to update categories dropdown
@@ -50,20 +61,24 @@ async function updateCategories(directory) {
         console.log('Updating categories for directory:', directory);
         const categories = await ipcRenderer.invoke('get-categories', directory);
         console.log('Received categories:', categories);
+
         categoriesCache = categories;
 
         // Clear existing options
         categorySelect.innerHTML = '';
         
-        // Add placeholder option
-        const placeholder = document.createElement('option');
-        placeholder.value = '';
-        placeholder.textContent = 'Select Category';
-        placeholder.disabled = true;
-        placeholder.selected = !categories.length;
-        categorySelect.appendChild(placeholder);
-        
-        // Add categories to dropdown
+        // Add default option
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = 'Select a category';
+        categorySelect.appendChild(defaultOption);
+
+        if (categories.length === 0) {
+            moviesGrid.innerHTML = '<div class="no-movies">No categories found. Add some movie directories to your configured folder.</div>';
+            return;
+        }
+
+        // Add categories
         categories.forEach(category => {
             const option = document.createElement('option');
             option.value = category;
@@ -71,15 +86,15 @@ async function updateCategories(directory) {
             categorySelect.appendChild(option);
         });
 
-        // Set last selected category if it exists
+        // Load last selected category if available
         const lastCategory = store.get('lastCategory');
         if (lastCategory && categories.includes(lastCategory)) {
             categorySelect.value = lastCategory;
-            filterMovies(lastCategory);
+            displayDirectoryContent(lastCategory);
         } else if (categories.length > 0) {
             // Select first category if no last category
             categorySelect.value = categories[0];
-            filterMovies(categories[0]);
+            displayDirectoryContent(categories[0]);
         }
 
         if (categories.length === 0) {
@@ -93,17 +108,23 @@ async function updateCategories(directory) {
 
 // Function to display movie folders
 async function displayDirectoryContent(category) {
-    if (!category) {
-        moviesGrid.innerHTML = '<div class="no-movies">Please select a category</div>';
-        return;
-    }
+    moviesGrid.innerHTML = '<div class="loading">Loading...</div>';
 
-    store.set('lastCategory', category);
-    moviesGrid.innerHTML = '<div class="loading">Loading movies...</div>';
-
-    const categoryPath = path.join(config.defaultDirectory, category);
     try {
+        if (!category) {
+            moviesGrid.innerHTML = '<div class="no-movies">Please select a category</div>';
+            return;
+        }
+
+        if (!config.defaultDirectory) {
+            moviesGrid.innerHTML = '<div class="error">No root directory configured</div>';
+            return;
+        }
+
+        store.set('lastCategory', category);
+        const categoryPath = path.join(config.defaultDirectory, category);
         console.log('Fetching movies from:', categoryPath);
+
         const movieFolders = await ipcRenderer.invoke('get-movie-folders', categoryPath);
         console.log('Received movie folders:', movieFolders);
 
@@ -122,12 +143,20 @@ async function displayDirectoryContent(category) {
             const thumbnailContainer = document.createElement('div');
             thumbnailContainer.className = 'thumbnail-container';
             
-            // Thumbnail image (using default for now)
+            // Thumbnail image
             const thumbnail = document.createElement('img');
-            thumbnail.src = 'assets/default-poster.jpg';
+            if (movie.posterPath) {
+                thumbnail.src = `file://${movie.posterPath}`;
+            } else {
+                thumbnail.src = 'assets/default-poster.jpg';
+            }
             thumbnail.alt = movie.name;
             thumbnailContainer.appendChild(thumbnail);
             
+            // Movie info container
+            const movieInfo = document.createElement('div');
+            movieInfo.className = 'movie-info';
+
             // Movie title
             const title = document.createElement('div');
             title.className = 'movie-title';
@@ -137,19 +166,44 @@ async function displayDirectoryContent(category) {
             const actions = document.createElement('div');
             actions.className = 'movie-actions';
             
-            // IMDB button
-            const imdbButton = document.createElement('button');
-            imdbButton.className = 'action-button imdb';
-            imdbButton.title = 'Fetch from IMDB';
-            imdbButton.innerHTML = '<i class="fas fa-database"></i>';
-            imdbButton.onclick = () => fetchFromIMDB(movie.name);
+            // Poster button
+            const posterButton = document.createElement('button');
+            posterButton.className = movie.posterPath ? 'action-button poster fetched' : 'action-button poster';
+            posterButton.innerHTML = '<i class="fas fa-image"></i>';
+            posterButton.onclick = async () => {
+                try {
+                    // Always show loading state
+                    posterButton.className = 'action-button poster loading';
+                    posterButton.disabled = true;
+
+                    // Force fetch new poster
+                    const result = await ipcRenderer.invoke('fetch-poster', {
+                        folderName: movie.name,
+                        folderPath: movie.path,
+                        forceRefetch: true  // Add flag to force refetch
+                    });
+
+                    if (result && result.posterPath) {
+                        // Add timestamp to URL to force browser to reload image
+                        thumbnail.src = `file://${result.posterPath}?t=${Date.now()}`;
+                        posterButton.className = 'action-button poster fetched';
+                    }
+                } catch (error) {
+                    console.error('Error fetching poster:', error);
+                    posterButton.className = 'action-button poster error';
+                    alert('Error fetching poster: ' + error.message);
+                } finally {
+                    posterButton.disabled = false;
+                }
+            };
             
             // Play button
             const playButton = document.createElement('button');
             playButton.className = 'action-button play';
-            playButton.title = 'Play in VLC';
+            playButton.title = movie.movieFile ? 'Play in VLC' : 'No movie file found';
             playButton.innerHTML = '<i class="fas fa-play"></i>';
-            playButton.onclick = () => playInVLC(movie.path);
+            playButton.onclick = () => playInVLC(movie.movieFile);
+            playButton.disabled = !movie.movieFile;
             
             // Finder button
             const finderButton = document.createElement('button');
@@ -158,12 +212,13 @@ async function displayDirectoryContent(category) {
             finderButton.innerHTML = '<i class="fas fa-folder-open"></i>';
             finderButton.onclick = () => openInFinder(movie.path);
             
-            actions.appendChild(imdbButton);
+            actions.appendChild(posterButton);
             actions.appendChild(playButton);
             actions.appendChild(finderButton);
             
             movieCard.appendChild(thumbnailContainer);
-            movieCard.appendChild(title);
+            movieInfo.appendChild(title);
+            movieCard.appendChild(movieInfo);
             movieCard.appendChild(actions);
             
             moviesGrid.appendChild(movieCard);
@@ -171,27 +226,29 @@ async function displayDirectoryContent(category) {
 
     } catch (error) {
         console.error('Error displaying movies:', error);
-        moviesGrid.innerHTML = '<div class="error">Error loading movies</div>';
+        moviesGrid.innerHTML = `<div class="error">Error: ${error.message || 'Failed to load movies'}</div>`;
     }
 }
 
 // Helper functions for actions
-async function fetchFromIMDB(movieName) {
+async function fetchPoster(movieName, moviePath) {
     try {
-        // Clean up movie name by removing extension and replacing dots/underscores
-        const cleanName = movieName
-            .replace(/\.[^/.]+$/, '') // Remove extension
-            .replace(/[._]/g, ' '); // Replace dots and underscores with spaces
-        
-        // TODO: Implement IMDB fetching
-        alert(`Will fetch IMDB info for: ${cleanName}`);
+        return await ipcRenderer.invoke('fetch-poster', {
+            folderName: movieName,
+            folderPath: moviePath
+        });
     } catch (error) {
-        console.error('Error fetching from IMDB:', error);
-        alert('Error fetching from IMDB');
+        console.error('Error fetching poster:', error);
+        throw error;
     }
 }
 
 async function playInVLC(moviePath) {
+    if (!moviePath) {
+        alert('No movie file found in this directory');
+        return;
+    }
+
     try {
         const success = await ipcRenderer.invoke('play-in-vlc', moviePath);
         if (!success) {

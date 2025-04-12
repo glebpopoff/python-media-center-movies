@@ -14,9 +14,12 @@
     "electron-builder": "^24.6.4"
   },
   "dependencies": {
-    "imdb-api": "^4.4.1",
+    "cheerio": "^1.0.0",
     "electron-store": "^8.1.0",
-    "sqlite3": "^5.1.6"
+    "imdb-api": "^4.4.1",
+    "node-fetch": "^2.7.0",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.1.7"
   },
   "build": {
     "appId": "com.movieplayer.app",
