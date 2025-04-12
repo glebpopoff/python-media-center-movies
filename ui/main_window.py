@@ -1,8 +1,9 @@
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLineEdit, QComboBox, QLabel,
-                             QScrollArea, QFileDialog, QMessageBox, QTabWidget)
+                             QScrollArea, QFileDialog, QMessageBox, QTabWidget,
+                             QApplication)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QPixmap
+from PyQt6.QtGui import QPixmap, QIcon
 import os
 from pathlib import Path
 from typing import Dict, List
@@ -55,8 +56,18 @@ class MainWindow(QMainWindow):
     def __init__(self):
         self.scan_worker = None
         super().__init__()
+        
+        # Set window title and icon
         self.setWindowTitle("Movie Directory")
         self.setMinimumSize(800, 600)
+        
+        icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets', 'icon.svg')
+        if os.path.exists(icon_path):
+            icon = QIcon(icon_path)
+            self.setWindowIcon(icon)
+            # Set the app icon for the dock (macOS)
+            if hasattr(Qt.ApplicationAttribute, 'AA_UseHighDpiPixmaps'):
+                QApplication.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps)
 
         # Initialize core components
         self.tmp_dir = Path("/tmp/movie_directory")
