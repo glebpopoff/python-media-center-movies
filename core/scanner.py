@@ -1,49 +1,62 @@
 import os
 from pathlib import Path
-from typing import List, Dict
-from datetime import datetime
 import logging
+from typing import Dict, List, Optional
+from datetime import datetime
 
 class MovieScanner:
-    def __init__(self, tmp_dir: str):
-        self.tmp_dir = Path(tmp_dir)
-        self._setup_logging()
-    
+    def __init__(self):
+        self.logger = logging.getLogger('MovieScanner')
+
     def _setup_logging(self):
-        log_file = self.tmp_dir / f"scanner_{datetime.now().strftime('%Y%m%d')}.log"
+        log_file = Path(f"scanner_{datetime.now().strftime('%Y%m%d')}.log")
         logging.basicConfig(
             filename=str(log_file),
             level=logging.INFO,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         )
-        self.logger = logging.getLogger('MovieScanner')
+
+    def find_movie_file(self, directory: Path) -> Optional[str]:
+        """Find the first movie file in the directory."""
+        movie_extensions = ('.avi', '.mkv', '.mp4', '.mpeg4', '.mpg4')
+        try:
+            for file in directory.iterdir():
+                if file.is_file() and file.suffix.lower() in movie_extensions:
+                    return str(file)
+        except Exception as e:
+            self.logger.error(f"Error finding movie file in {directory}: {str(e)}")
+        return None
 
     def scan_directory(self, category_dir: str) -> List[Dict[str, str]]:
-        """
-        Scan a category directory for movies.
-        Returns a list of dictionaries containing movie information.
-        """
+        """Scan a directory for movie folders."""
         movies = []
+        category_path = Path(category_dir)
+        
+        if not category_path.exists():
+            self.logger.error(f"Directory does not exist: {category_dir}")
+            print(f"Directory does not exist: {category_dir}")
+            return movies
+
         try:
-            category_path = Path(category_dir)
             self.logger.info(f"Scanning directory: {category_dir}")
             print(f"Scanning directory: {category_dir}")
             
-            if not category_path.exists():
-                self.logger.error(f"Directory does not exist: {category_dir}")
-                print(f"Directory does not exist: {category_dir}")
-                return movies
-
-            for item in category_path.iterdir():
-                if item.is_dir():
+            # List all subdirectories in the category directory
+            for movie_dir in category_path.iterdir():
+                if movie_dir.is_dir():
+                    movie_file = self.find_movie_file(movie_dir)
                     movie_info = {
-                        'name': item.name,
-                        'path': str(item),
+                        'name': movie_dir.name,
+                        'path': str(movie_dir),
+                        'movie_file': movie_file,
                         'category': category_path.name
                     }
                     movies.append(movie_info)
-                    self.logger.info(f"Found movie directory: {item.name}")
-                    print(f"Found movie directory: {item.name}")
+                    self.logger.info(f"Found movie directory: {movie_dir.name}")
+                    print(f"Found movie directory: {movie_dir.name}")
+                    if movie_file:
+                        self.logger.info(f"Found movie file: {movie_file}")
+                        print(f"Found movie file: {movie_file}")
 
             self.logger.info(f"Found {len(movies)} movies in {category_dir}")
             print(f"Found {len(movies)} movies in {category_dir}")

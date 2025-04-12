@@ -1,13 +1,15 @@
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLineEdit, QComboBox, QLabel,
                              QScrollArea, QFileDialog, QMessageBox, QTabWidget,
-                             QApplication)
+                             QApplication, QGridLayout)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QPixmap, QIcon
 import os
 from pathlib import Path
 from typing import Dict, List
 import json
+import subprocess
+from sys import platform
 
 from core.scanner import MovieScanner
 from core.imdb import IMDBFetcher
@@ -76,7 +78,7 @@ class MainWindow(QMainWindow):
         self.cache_dir = Path.home() / ".cache" / "movie_directory"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-        self.scanner = MovieScanner(self.tmp_dir)
+        self.scanner = MovieScanner()
         self.imdb = IMDBFetcher(self.cache_dir, self.tmp_dir)
         
         self.config_file = Path.home() / ".config" / "movie_directory" / "config.json"
@@ -157,10 +159,12 @@ class MainWindow(QMainWindow):
         self.movies_widget = QWidget()
         self.movies_widget.setStyleSheet("QWidget { background-color: #f5f5f5; }")
         
-        self.movies_layout = QVBoxLayout(self.movies_widget)
+        # Use QGridLayout instead of QVBoxLayout
+        self.movies_layout = QGridLayout(self.movies_widget)
         self.movies_layout.setSpacing(10)
         self.movies_layout.setContentsMargins(10, 10, 10, 10)
-        self.movies_layout.addStretch()
+        self.current_row = 0
+        self.current_col = 0
         
         container_layout = QVBoxLayout(movies_container)
         container_layout.addWidget(self.movies_widget)
@@ -336,12 +340,28 @@ class MainWindow(QMainWindow):
                 )
                 info_layout.addWidget(fetch_btn)
 
+            # Add Play button if movie file exists
+            if movie_info.get('movie_file'):
+                play_btn = QPushButton("Play")
+                play_btn.setMaximumWidth(100)
+                play_btn.setStyleSheet(
+                    "QPushButton { background-color: #2ecc71; color: white; padding: 5px; border-radius: 3px; }"
+                    "QPushButton:hover { background-color: #27ae60; }"
+                )
+                play_btn.clicked.connect(lambda: self.play_movie(movie_info['movie_file']))
+                info_layout.addWidget(play_btn)
+
             movie_layout.addLayout(info_layout)
             movie_layout.addStretch()
 
-            # Insert at the beginning of the layout
-            self.movies_layout.insertWidget(0, movie_widget)
+            # Add to grid layout
+            self.movies_layout.addWidget(movie_widget, self.current_row, self.current_col)
             movie_widget.setProperty('movie_name', movie_info['name'].lower())
+            
+            # Update grid position
+            self.current_col = (self.current_col + 1) % 2
+            if self.current_col == 0:
+                self.current_row += 1
             
             # Force the layout to update
             self.movies_layout.update()
@@ -353,10 +373,14 @@ class MainWindow(QMainWindow):
             print(f"Error adding movie to UI: {str(e)}")
 
     def clear_movies(self):
-        while self.movies_layout.count():
-            child = self.movies_layout.takeAt(0)
+        # Clear grid layout
+        for i in reversed(range(self.movies_layout.count())):
+            child = self.movies_layout.itemAt(i)
             if child.widget():
                 child.widget().deleteLater()
+        # Reset grid position
+        self.current_row = 0
+        self.current_col = 0
 
     def fetch_movie_info(self, movie_name: str, fetch_button: QPushButton = None):
         """Fetch IMDB info for a single movie."""
@@ -390,10 +414,35 @@ class MainWindow(QMainWindow):
                 fetch_button.setText("Retry Fetch")
                 fetch_button.setEnabled(True)
 
+    def play_movie(self, movie_file: str):
+        """Launch VLC to play the movie file."""
+        try:
+            # Determine VLC path based on platform
+            if platform == "darwin":  # macOS
+                vlc_path = "/Applications/VLC.app/Contents/MacOS/VLC"
+            elif platform == "win32":  # Windows
+                vlc_path = r"C:\Program Files\VideoLAN\VLC\vlc.exe"
+            else:  # Linux and others
+                vlc_path = "vlc"
+
+            if platform == "darwin" and not os.path.exists(vlc_path):
+                QMessageBox.warning(self, "VLC Not Found", 
+                    "Please install VLC from https://www.videolan.org/vlc/")
+                return
+
+            print(f"Playing movie: {movie_file}")
+            subprocess.Popen([vlc_path, movie_file])
+
+        except Exception as e:
+            print(f"Error playing movie: {str(e)}")
+            QMessageBox.warning(self, "Error", f"Error playing movie: {str(e)}")
+
     def filter_movies(self, text):
         text = text.lower()
         for i in range(self.movies_layout.count()):
-            widget = self.movies_layout.itemAt(i).widget()
-            if widget:
+            item = self.movies_layout.itemAt(i)
+            if item and item.widget():
+                widget = item.widget()
                 movie_name = widget.property('movie_name')
-                widget.setVisible(text in movie_name)
+                if movie_name:  # Check if property exists
+                    widget.setVisible(text in movie_name)
