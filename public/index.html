@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Movie Directory</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <div class="tabs">
+            <button class="tab-button active" data-tab="movies">Movies</button>
+            <button class="tab-button" data-tab="config">Configuration</button>
+        </div>
+        
+        <div class="tab-content" id="moviesTab">
+            <div class="header">
+                <div class="controls">
+                    <select id="categorySelect">
+                        <option value="" disabled selected>Select Category</option>
+                    </select>
+                </div>
+            </div>
+            <div id="moviesGrid" class="movies-grid"></div>
+        </div>
+
+        <div class="tab-content" id="configTab" style="display: none;">
+            <div class="config-section">
+                <h2>Directory Settings</h2>
+                <div class="config-item">
+                    <label for="defaultDirectory">Default Movies Directory:</label>
+                    <div class="directory-input">
+                        <input type="text" id="defaultDirectory" readonly>
+                        <button id="selectDefaultDirectory">Browse</button>
+                    </div>
+                </div>
+                <div class="config-item">
+                    <label for="autoScan">Auto-scan on startup:</label>
+                    <input type="checkbox" id="autoScan">
+                </div>
+                <button id="saveConfig" class="save-button">Save Configuration</button>
+            </div>
+        </div>
+    </div>
+    <script src="../src/renderer/renderer.js"></script>
+</body>
+</html>

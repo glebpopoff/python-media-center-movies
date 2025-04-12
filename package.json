@@ -1,0 +1,28 @@
+{
+  "name": "movie-directory",
+  "version": "1.0.0",
+  "description": "Movie Directory Application",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^25.0.0",
+    "electron-builder": "^24.6.4"
+  },
+  "dependencies": {
+    "imdb-api": "^4.4.1",
+    "electron-store": "^8.1.0",
+    "sqlite3": "^5.1.6"
+  },
+  "build": {
+    "appId": "com.movieplayer.app",
+    "mac": {
+      "target": "dmg",
+      "icon": "build/icon.icns"
+    }
+  }
+}

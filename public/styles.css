@@ -1,0 +1,264 @@
+body {
+    margin: 0;
+    padding: 20px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    background-color: #f5f5f5;
+    color: #333;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    padding: 20px;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.controls {
+    display: flex;
+    gap: 10px;
+}
+
+select, button {
+    padding: 8px 16px;
+    font-size: 14px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+}
+
+button {
+    background-color: #007AFF;
+    color: white;
+    border: none;
+    cursor: pointer;
+}
+
+button:hover {
+    background-color: #0056b3;
+}
+
+/* Tabs */
+.tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 10px;
+}
+
+.tab-button {
+    padding: 8px 16px;
+    font-size: 14px;
+    border: none;
+    background: none;
+    color: #666;
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+.tab-button.active {
+    background-color: #007AFF;
+    color: white;
+}
+
+/* Configuration Tab */
+.config-section {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.config-item {
+    margin-bottom: 20px;
+}
+
+.config-item label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+
+.directory-input {
+    display: flex;
+    gap: 10px;
+}
+
+.directory-input input {
+    flex: 1;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 14px;
+    background: #f8f8f8;
+}
+
+.save-button {
+    width: 100%;
+    margin-top: 20px;
+    padding: 12px;
+    font-size: 16px;
+    background-color: #28a745;
+}
+
+.save-button:hover {
+    background-color: #218838;
+}
+
+.movies-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 20px;
+    padding: 20px;
+    margin: 0 auto;
+}
+
+.movie-card {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    overflow: hidden;
+    transition: transform 0.2s;
+}
+
+.movie-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.movie-card img {
+    width: 100%;
+    height: 400px;
+    object-fit: cover;
+    border-bottom: 1px solid #eee;
+}
+
+.movie-info {
+    padding: 15px;
+}
+
+.movie-info h3 {
+    margin: 0 0 10px 0;
+    font-size: 18px;
+    color: #333;
+}
+
+.movie-info p {
+    margin: 5px 0;
+    color: #666;
+    font-size: 14px;
+}
+
+.controls {
+    display: flex;
+    justify-content: center;
+    padding: 20px 0;
+}
+
+.movie-controls {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+#categorySelect {
+    min-width: 200px;
+    padding: 8px 12px;
+    font-size: 16px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background-color: white;
+    cursor: pointer;
+}
+
+#categorySelect:focus {
+    outline: none;
+    border-color: #007AFF;
+    box-shadow: 0 0 0 2px rgba(0,122,255,0.2);
+}
+
+#categorySelect option:first-child {
+    color: #666;
+}
+
+.movie-controls button {
+    flex: 1;
+    padding: 8px;
+    font-size: 14px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.movie-controls button:first-child {
+    background-color: #28a745;
+    color: white;
+}
+
+.movie-controls button:last-child {
+    background-color: #6c757d;
+    color: white;
+}
+
+.movie-controls button:hover {
+    opacity: 0.9;
+}
+
+.loading, .error, .no-movies {
+    text-align: center;
+    padding: 40px;
+    font-size: 16px;
+    color: #666;
+    background: white;
+    border-radius: 8px;
+    margin: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.loading {
+    color: #007AFF;
+}
+
+.error {
+    color: #dc3545;
+}
+
+.no-movies {
+    color: #666;
+}
+
+
+.movie-info {
+    flex: 1;
+}
+
+.movie-title {
+    margin: 0 0 10px 0;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.movie-details {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 15px;
+}
+
+.movie-buttons {
+    display: flex;
+    gap: 10px;
+}
+
+.movie-buttons button {
+    flex: 1;
+    padding: 6px 12px;
+    font-size: 13px;
+}

@@ -1,37 +1,102 @@
-# Movie Directory
+# Movie Directory Application
 
-A PyQt6-based media center app to manage your locally stored movie files. Features include:
-- Automatic movie metadata fetching from IMDB
-- Movie thumbnails and information display
-- Category-based organization
-- VLC integration for playback
-- Finder/Explorer integration for file management
+A desktop application for organizing and playing your movie collection. Built with Electron for maximum compatibility with older macOS versions (10.12+).
+
+## Features
+
+- 🎬 Scan directories for movies
+- 🎯 Automatic movie information fetching from IMDB
+- 🗂️ Category-based organization
+- 🔍 Movie filtering functionality
+- 💾 Local caching of movie information and thumbnails
+- ▶️ Direct playback through VLC
+- 📁 Quick access to movie files in Finder
 
 ## Requirements
-- macOS 10.13 or later
-- VLC media player for movie playback
+
+- macOS 10.12 (Sierra) or later
+- Node.js 14.0.0 or later
+- VLC media player (for playback)
 
 ## Installation
-1. Download the latest release from the `dist` folder
-2. Copy `Movie Directory.app` to your Applications folder
-3. When running for the first time, right-click and select "Open" to bypass Gatekeeper
 
-## Usage
-1. Launch the app
-2. Select your movies base directory when prompted
-3. Choose a category from the dropdown
-4. Click "Scan" to find movies
-5. Use the Play button to watch movies in VLC
-6. Use the Folder button to open movie locations in Finder
+1. Clone the repository:
+   ```bash
+   git clone <repository-url>
+   cd movie-directory
+   ```
 
-## Building from Source
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+3. Create a `.env` file in the root directory and add your IMDB API key:
+   ```env
+   IMDB_API_KEY=your-api-key-here
+   ```
+
+## Development
+
+Run the application in development mode:
 ```bash
-# Install dependencies
-pip3 install -r requirements.txt
-pip3 install pyinstaller
-
-# Build executable
-pyinstaller --name="Movie Directory" --windowed --onefile --add-data "ui:ui" --add-data "core:core" main.py
+npm start
 ```
 
-The executable will be created in the `dist` folder.
+## Building
+
+Build the application for macOS:
+```bash
+npm run build
+```
+
+The built application will be available in the `dist` directory.
+
+## Project Structure
+
+```
+movie-directory/
+├── public/              # Static assets
+│   ├── index.html
+│   └── styles.css
+├── src/
+│   ├── main/           # Main process code
+│   │   └── main.js
+│   └── renderer/       # Renderer process code
+│       └── renderer.js
+├── package.json
+└── .gitignore
+```
+
+## Usage
+
+1. Launch the application
+2. Click "Scan Directory" to select a movie directory
+3. The application will scan for movies and fetch their information from IMDB
+4. Use the category dropdown to filter movies
+5. Click "Play" to open a movie in VLC
+6. Click "Show in Finder" to locate the movie file
+
+## Features in Detail
+
+### Directory Scanning
+- Supports common video formats (mp4, mkv, avi)
+- Automatically organizes movies by directory name
+
+### Movie Information
+- Fetches detailed movie information from IMDB
+- Caches information locally for faster loading
+- Displays movie posters, ratings, and basic information
+
+### Movie Organization
+- Automatic category assignment based on directory structure
+- Filter movies by category
+- Remember last selected category
+
+### Playback Integration
+- Direct integration with VLC media player
+- Quick access to movie files in Finder
+
+## License
+
+ISC
