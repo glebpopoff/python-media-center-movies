@@ -2,6 +2,10 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLineEdit, QComboBox, QLabel,
                              QScrollArea, QFileDialog, QMessageBox, QTabWidget,
                              QApplication, QGridLayout)
+from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+                             QPushButton, QLineEdit, QComboBox, QLabel,
+                             QScrollArea, QFileDialog, QMessageBox, QTabWidget,
+                             QApplication, QGridLayout)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QPixmap, QIcon
 import os
@@ -94,7 +98,8 @@ class MainWindow(QMainWindow):
     def load_config(self):
         self.config = {
             'base_directory': '',
-            'categories': {}
+            'categories': {},
+            'last_category': ''
         }
         if self.config_file.exists():
             try:
@@ -104,10 +109,12 @@ class MainWindow(QMainWindow):
                 pass
         self.base_directory = self.config.get('base_directory', '')
         self.categories = self.config.get('categories', {})
+        self.last_category = self.config.get('last_category', '')
 
     def save_config(self):
         self.config['base_directory'] = self.base_directory
         self.config['categories'] = self.categories
+        self.config['last_category'] = self.category_combo.currentText()
         with open(self.config_file, 'w') as f:
             json.dump(self.config, f)
 
@@ -140,10 +147,14 @@ class MainWindow(QMainWindow):
         self.search_box.setPlaceholderText("Search movies...")
         self.search_box.textChanged.connect(self.filter_movies)
         top_controls.addWidget(self.search_box)
-
-        # Scan button
+        
+        # Add scan button
         self.scan_btn = QPushButton("Scan")
-        self.scan_btn.clicked.connect(lambda: self.scan_directory(force_update=True))
+        self.scan_btn.setStyleSheet(
+            "QPushButton { background-color: #3498db; color: white; padding: 5px; border-radius: 3px; }"
+            "QPushButton:hover { background-color: #2980b9; }"
+        )
+        self.scan_btn.clicked.connect(lambda: self.scan_directory(True))
         top_controls.addWidget(self.scan_btn)
 
         movies_layout.addLayout(top_controls)
@@ -159,10 +170,11 @@ class MainWindow(QMainWindow):
         self.movies_widget = QWidget()
         self.movies_widget.setStyleSheet("QWidget { background-color: #f5f5f5; }")
         
-        # Use QGridLayout instead of QVBoxLayout
+        # Create movies layout
+        self.movies_widget = QWidget()
         self.movies_layout = QGridLayout(self.movies_widget)
-        self.movies_layout.setSpacing(10)
-        self.movies_layout.setContentsMargins(10, 10, 10, 10)
+        self.movies_layout.setSpacing(20)  # Increased spacing between movie cards
+        self.movies_layout.setContentsMargins(20, 20, 20, 20)  # Increased margins
         self.current_row = 0
         self.current_col = 0
         
@@ -170,7 +182,7 @@ class MainWindow(QMainWindow):
         container_layout.addWidget(self.movies_widget)
         container_layout.addStretch()
         
-        scroll.setWidget(movies_container)
+        scroll.setWidget(self.movies_widget)
         movies_layout.addWidget(scroll)
 
         self.tab_widget.addTab(movies_tab, "Movies")
@@ -197,8 +209,15 @@ class MainWindow(QMainWindow):
 
     def update_category_combo(self):
         self.category_combo.clear()
-        self.category_combo.addItems(self.categories.keys())
+        categories = sorted(self.categories.keys())
+        self.category_combo.addItems(categories)
         self.category_combo.currentTextChanged.connect(self.category_changed)
+        
+        # Restore last selected category
+        if self.last_category and self.last_category in categories:
+            index = self.category_combo.findText(self.last_category)
+            if index >= 0:
+                self.category_combo.setCurrentIndex(index)
 
     def select_base_directory(self):
         dir_path = QFileDialog.getExistingDirectory(self, "Select Base Directory")
@@ -207,6 +226,7 @@ class MainWindow(QMainWindow):
             self.base_dir_input.setText(dir_path)
             self.save_config()
             self.load_categories()
+            self.update_category_combo()
 
     def load_categories(self):
         self.categories = {}
@@ -220,40 +240,56 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Error", f"Error loading categories: {str(e)}")
 
     def category_changed(self, category):
-        if not category:
-            return
-        print(f"Category changed to: {category}")
-        self.clear_movies()
         if category in self.categories:
-            print(f"Scanning directory: {self.categories[category]}")
+            print(f"Selected category: {category}")
+            self.clear_movies()
             self.scan_directory()
+            # Save config when category changes
+            self.save_config()
 
+    def __init__(self):
+        super().__init__()
+        
+        self.tmp_dir = Path("/tmp/movie_directory")
+        self.tmp_dir.mkdir(parents=True, exist_ok=True)
+        
+        self.cache_dir = Path.home() / ".cache" / "movie_directory"
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+        self.scanner = MovieScanner()
+        self.imdb = IMDBFetcher(self.cache_dir, self.tmp_dir)
+        
+        self.config_file = Path.home() / ".config" / "movie_directory" / "config.json"
+        self.config_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        self.scan_worker = None
+        self.current_row = 0
+        self.current_col = 0
+        self.scan_btn = None
+        
+        self.load_config()
+        self.setup_ui()
+        
+        # Load categories if base directory is set
+        if self.base_directory:
+            self.load_categories()
+            
     def scan_directory(self, force_update=False):
         category = self.category_combo.currentText()
         if not category or category not in self.categories:
             return
 
-        self.scan_btn.setEnabled(False)
-        self.clear_movies()
-
-        # Clean up previous worker if it exists
-        if self.scan_worker is not None:
-            self.scan_worker.quit()
-            self.scan_worker.wait()
-
         try:
-            self.scan_worker = ScanWorker(
-                self.scanner, 
-                self.imdb, 
-                self.categories[category],
-                force_update
-            )
-            self.scan_worker.progress.connect(self.add_movie)
-            self.scan_worker.finished.connect(self.on_scan_finished)
-            self.scan_worker.start()
+            print(f"Scanning directory: {self.categories[category]}")
+            movies = self.scanner.scan_directory(self.categories[category])
+            self.clear_movies()
+            
+            for movie in movies:
+                self.add_movie(movie)
+                
         except Exception as e:
-            print(f"Error starting scan: {str(e)}")
-            self.scan_btn.setEnabled(True)
+            print(f"Error scanning directory: {str(e)}")
+            QMessageBox.warning(self, "Error", f"Error scanning directory: {str(e)}")
 
     def on_scan_finished(self):
         self.scan_btn.setEnabled(True)
@@ -297,10 +333,15 @@ class MainWindow(QMainWindow):
                 placeholder_layout.addWidget(placeholder_label)
             movie_layout.addWidget(thumbnail_label)
 
-            # Movie info
+            # Right side container
+            right_container = QWidget()
+            right_layout = QVBoxLayout(right_container)
+            right_layout.setContentsMargins(0, 0, 0, 0)
+            right_layout.setSpacing(8)  # Increased spacing between elements
+
+            # Add info
             info_layout = QVBoxLayout()
-            info_layout.setSpacing(2)
-            info_layout.setContentsMargins(10, 5, 10, 5)
+            info_layout.setSpacing(5)
 
             # Always show the directory name
             dir_label = QLabel(f"Directory: {movie_info['name']}")
@@ -334,24 +375,48 @@ class MainWindow(QMainWindow):
             if 'title' not in movie_info:
                 fetch_btn = QPushButton("Fetch from IMDB")
                 fetch_btn.setMaximumWidth(150)
+                fetch_btn.setStyleSheet(
+                    "QPushButton { background-color: #f39c12; color: white; padding: 5px; border-radius: 3px; }"
+                    "QPushButton:hover { background-color: #d68910; }"
+                )
                 # Use lambda to pass both movie name and button instance
                 fetch_btn.clicked.connect(
                     lambda checked, btn=fetch_btn: self.fetch_movie_info(movie_info['name'], btn)
                 )
                 info_layout.addWidget(fetch_btn)
+                
+            info_layout.addStretch()  # Push buttons to bottom
+            right_layout.addLayout(info_layout)
 
+            # Add buttons layout
+            buttons_layout = QHBoxLayout()
+            buttons_layout.setSpacing(8)  # Increased button spacing
+            
             # Add Play button if movie file exists
             if movie_info.get('movie_file'):
-                play_btn = QPushButton("Play")
-                play_btn.setMaximumWidth(100)
+                play_btn = QPushButton("▶ Play")
+                play_btn.setFixedSize(90, 30)  # Fixed button size
                 play_btn.setStyleSheet(
                     "QPushButton { background-color: #2ecc71; color: white; padding: 5px; border-radius: 3px; }"
                     "QPushButton:hover { background-color: #27ae60; }"
                 )
                 play_btn.clicked.connect(lambda: self.play_movie(movie_info['movie_file']))
-                info_layout.addWidget(play_btn)
+                buttons_layout.addWidget(play_btn)
+            
+            # Add Finder button
+            finder_btn = QPushButton("📂 Folder")
+            finder_btn.setFixedSize(90, 30)  # Fixed button size
+            finder_btn.setStyleSheet(
+                "QPushButton { background-color: #3498db; color: white; padding: 5px; border-radius: 3px; }"
+                "QPushButton:hover { background-color: #2980b9; }"
+            )
+            finder_btn.clicked.connect(lambda: self.open_in_finder(movie_info['path']))
+            buttons_layout.addWidget(finder_btn)
+            
+            buttons_layout.addStretch()
+            right_layout.addLayout(buttons_layout)
+            movie_layout.addWidget(right_container)
 
-            movie_layout.addLayout(info_layout)
             movie_layout.addStretch()
 
             # Add to grid layout
@@ -373,12 +438,11 @@ class MainWindow(QMainWindow):
             print(f"Error adding movie to UI: {str(e)}")
 
     def clear_movies(self):
-        # Clear grid layout
-        for i in reversed(range(self.movies_layout.count())):
-            child = self.movies_layout.itemAt(i)
-            if child.widget():
-                child.widget().deleteLater()
-        # Reset grid position
+        if hasattr(self, 'movies_layout'):
+            while self.movies_layout.count():
+                item = self.movies_layout.takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
         self.current_row = 0
         self.current_col = 0
 
@@ -413,6 +477,19 @@ class MainWindow(QMainWindow):
             if fetch_button:
                 fetch_button.setText("Retry Fetch")
                 fetch_button.setEnabled(True)
+
+    def open_in_finder(self, path: str):
+        """Open the movie directory in Finder (macOS) or File Explorer (Windows)."""
+        try:
+            if platform == "darwin":  # macOS
+                subprocess.Popen(["open", path])
+            elif platform == "win32":  # Windows
+                subprocess.Popen(["explorer", path])
+            else:  # Linux and others
+                subprocess.Popen(["xdg-open", path])
+        except Exception as e:
+            print(f"Error opening directory: {str(e)}")
+            QMessageBox.warning(self, "Error", f"Error opening directory: {str(e)}")
 
     def play_movie(self, movie_file: str):
         """Launch VLC to play the movie file."""
