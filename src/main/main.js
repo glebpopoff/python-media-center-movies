@@ -6,6 +6,7 @@ const { exec } = require('child_process');
 const Store = require('electron-store');
 const fetch = require('node-fetch');
 const cheerio = require('cheerio');
+const https = require('https');
 
 // Store for caching poster paths
 const posterCache = new Store({
