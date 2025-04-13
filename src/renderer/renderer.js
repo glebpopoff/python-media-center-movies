@@ -158,7 +158,6 @@ function filterMovies(movies, filterText = '') {
 // Function to display movie folders
 async function displayDirectoryContent(category, filterText = '') {
     console.log('Displaying content for:', { category, filterText });
-    moviesGrid.innerHTML = '<div class="loading">Loading...</div>';
 
     try {
         if (!category) {
@@ -175,42 +174,43 @@ async function displayDirectoryContent(category, filterText = '') {
         const categoryPath = path.join(config.defaultDirectory, category);
         console.log('Fetching movies from:', categoryPath);
 
+        // Get movie folders first
         let movieFolders = [];
         try {
             movieFolders = await ipcRenderer.invoke('get-movie-folders', categoryPath);
             console.log('Received movie folders:', movieFolders);
+            
+            // Ensure movieFolders is an array
+            if (!Array.isArray(movieFolders)) {
+                console.warn('Movie folders is not an array:', movieFolders);
+                movieFolders = [];
+            }
         } catch (err) {
             console.error('Error getting movie folders:', err);
-            const errorDiv = document.createElement('div');
-            errorDiv.className = 'error';
-            errorDiv.textContent = 'Error loading movies: ' + err.message;
-            moviesGrid.appendChild(errorDiv);
+            moviesGrid.innerHTML = '<div class="error">Error loading movies: ' + err.message + '</div>';
             return;
         }
 
-        // Ensure movieFolders is an array
-        if (!Array.isArray(movieFolders)) {
-            console.warn('Movie folders is not an array:', movieFolders);
-            movieFolders = [];
-        }
-
-        // Clear the grid and initialize controls
+        // Now create the UI
         moviesGrid.innerHTML = '';
         
-        // Create controls first
+        // Create controls container
         const controls = document.createElement('div');
         controls.className = 'movie-controls';
         
-        // Always add filter box
+        // Create filter box
         const filterBox = document.createElement('input');
         filterBox.type = 'text';
         filterBox.placeholder = 'Filter movies...';
-        filterBox.value = filterText || '';
         filterBox.className = 'movie-filter';
-        filterBox.oninput = (e) => displayDirectoryContent(category, e.target.value);
+        filterBox.value = filterText || '';
+        filterBox.addEventListener('input', (e) => {
+            const text = e.target.value;
+            const filtered = filterMovies(movieFolders, text);
+            updateMovieGrid(filtered);
+        });
         controls.appendChild(filterBox);
         
-        // Add controls to grid
         moviesGrid.appendChild(controls);
 
         // Add download button if we have movies
@@ -235,24 +235,48 @@ async function displayDirectoryContent(category, filterText = '') {
                     const moviesToProcess = filterMovies(movieFolders, filterText);
                     const total = moviesToProcess.length;
                     let completed = 0;
+                    let updatedMovies = [];
                     
                     for (const movie of moviesToProcess) {
                         try {
-                            await ipcRenderer.invoke('fetch-poster', {
+                            const result = await ipcRenderer.invoke('fetch-poster', {
                                 folderName: movie.name,
                                 folderPath: movie.path,
                                 forceRefetch: true
                             });
+                            if (result && result.posterPath) {
+                                updatedMovies.push({
+                                    name: movie.name,
+                                    posterPath: result.posterPath
+                                });
+                            }
                         } catch (err) {
                             console.error(`Error fetching poster for ${movie.name}:`, err);
                         }
                         
                         completed++;
                         progress.value = (completed / total) * 100;
+
+                        // Update image in real-time if possible
+                        const movieCard = document.querySelector(`.movie-card[data-name="${movie.name}"]`);
+                        if (movieCard) {
+                            const img = movieCard.querySelector('img');
+                            if (img) {
+                                img.src = `file://${movie.posterPath}?t=${Date.now()}`;
+                            }
+                        }
                     }
                     
                     // Refresh the display
                     await displayDirectoryContent(category, filterText);
+
+                    // Force refresh all images
+                    document.querySelectorAll('.movie-thumbnail').forEach(img => {
+                        const currentSrc = img.src;
+                        if (currentSrc.startsWith('file://')) {
+                            img.src = currentSrc.split('?')[0] + '?t=' + Date.now();
+                        }
+                    });
                 } catch (error) {
                     console.error('Error in batch download:', error);
                     alert('Error downloading posters: ' + error.message);
@@ -263,103 +287,111 @@ async function displayDirectoryContent(category, filterText = '') {
             };
         }
 
-        // Filter and create grid container
+        // Create grid container
         const gridContainer = document.createElement('div');
         gridContainer.className = 'movies-container';
         moviesGrid.appendChild(gridContainer);
 
-        // Filter movies
-        const filteredMovies = filterMovies(movieFolders, filterText);
-        
-        // Show appropriate message if no movies
-        if (filteredMovies.length === 0) {
-            const noMovies = document.createElement('div');
-            noMovies.className = 'no-movies';
-            noMovies.textContent = movieFolders.length === 0 ? 
-                'No movies found in this category' : 
-                'No matching movies found';
-            gridContainer.appendChild(noMovies);
-            return;
-        }
+        // Initial display
+        const filtered = filterMovies(movieFolders, filterText);
+        updateMovieGrid(filtered, gridContainer);
 
-        // Display movies
-        filteredMovies.forEach(movie => {
-            const movieCard = document.createElement('div');
-            movieCard.className = 'movie-card';
+        // Helper function to update movie grid
+        function updateMovieGrid(movies) {
+            // Clear existing movies
+            gridContainer.innerHTML = '';
             
-            // Create thumbnail container
-            const thumbnailContainer = document.createElement('div');
-            thumbnailContainer.className = 'thumbnail-container';
-            
-            // Create thumbnail
-            const thumbnail = document.createElement('img');
-            thumbnail.className = 'movie-thumbnail';
-            if (movie.posterPath) {
-                thumbnail.src = `file://${movie.posterPath}`;
-            } else {
-                thumbnail.src = '../assets/placeholder.png';
+            // Show appropriate message if no movies
+            if (movies.length === 0) {
+                const noMovies = document.createElement('div');
+                noMovies.className = 'no-movies';
+                noMovies.textContent = movieFolders.length === 0 ? 
+                    'No movies found in this category' : 
+                    'No matching movies found';
+                gridContainer.appendChild(noMovies);
+                return;
             }
-            thumbnailContainer.appendChild(thumbnail);
-            
-            // Create movie info
-            const movieInfo = document.createElement('div');
-            movieInfo.className = 'movie-info';
-            movieInfo.innerHTML = `<div class="movie-title">${movie.name}</div>`;
-            
-            // Create actions container
-            const actions = document.createElement('div');
-            actions.className = 'movie-actions';
-            
-            // Create poster button
-            const posterButton = document.createElement('button');
-            posterButton.className = movie.posterPath ? 'action-button poster fetched' : 'action-button poster';
-            posterButton.innerHTML = '<i class="fas fa-image"></i>';
-            posterButton.onclick = async () => {
-                try {
-                    posterButton.className = 'action-button poster loading';
-                    posterButton.disabled = true;
 
-                    const result = await ipcRenderer.invoke('fetch-poster', {
-                        folderName: movie.name,
-                        folderPath: movie.path,
-                        forceRefetch: true
-                    });
-
-                    if (result && result.posterPath) {
-                        thumbnail.src = `file://${result.posterPath}?t=${Date.now()}`;
-                        posterButton.className = 'action-button poster fetched';
-                    }
-                } catch (error) {
-                    console.error('Error fetching poster:', error);
-                    posterButton.className = 'action-button poster error';
-                    alert('Error fetching poster: ' + error.message);
-                } finally {
-                    posterButton.disabled = false;
+            // Display movies
+            movies.forEach(movie => {
+                const movieCard = document.createElement('div');
+                movieCard.className = 'movie-card';
+                movieCard.dataset.name = movie.name;
+                
+                // Create thumbnail container
+                const thumbnailContainer = document.createElement('div');
+                thumbnailContainer.className = 'thumbnail-container';
+                
+                // Create thumbnail
+                const thumbnail = document.createElement('img');
+                thumbnail.className = 'movie-thumbnail';
+                if (movie.posterPath) {
+                    thumbnail.src = `file://${movie.posterPath}`;
+                } else {
+                    thumbnail.src = '../assets/placeholder.png';
                 }
-            };
-            actions.appendChild(posterButton);
-            
-            // Create finder button
-            const finderButton = document.createElement('button');
-            finderButton.className = 'action-button finder';
-            finderButton.innerHTML = '<i class="fas fa-folder-open"></i>';
-            finderButton.onclick = () => ipcRenderer.invoke('open-in-finder', movie.path);
-            actions.appendChild(finderButton);
-            
-            // Create play button
-            const playButton = document.createElement('button');
-            playButton.className = 'action-button play';
-            playButton.innerHTML = '<i class="fas fa-play"></i>';
-            playButton.onclick = () => ipcRenderer.invoke('play-in-vlc', movie.path);
-            actions.appendChild(playButton);
-            
-            // Assemble movie card
-            movieCard.appendChild(thumbnailContainer);
-            movieCard.appendChild(movieInfo);
-            movieCard.appendChild(actions);
-            
-            gridContainer.appendChild(movieCard);
-        });
+                thumbnailContainer.appendChild(thumbnail);
+                
+                // Create movie info
+                const movieInfo = document.createElement('div');
+                movieInfo.className = 'movie-info';
+                movieInfo.innerHTML = `<div class="movie-title">${movie.name}</div>`;
+                
+                // Create actions container
+                const actions = document.createElement('div');
+                actions.className = 'movie-actions';
+                
+                // Create poster button
+                const posterButton = document.createElement('button');
+                posterButton.className = movie.posterPath ? 'action-button poster fetched' : 'action-button poster';
+                posterButton.innerHTML = '<i class="fas fa-image"></i>';
+                posterButton.onclick = async () => {
+                    try {
+                        posterButton.className = 'action-button poster loading';
+                        posterButton.disabled = true;
+
+                        const result = await ipcRenderer.invoke('fetch-poster', {
+                            folderName: movie.name,
+                            folderPath: movie.path,
+                            forceRefetch: true
+                        });
+
+                        if (result && result.posterPath) {
+                            thumbnail.src = `file://${result.posterPath}?t=${Date.now()}`;
+                            posterButton.className = 'action-button poster fetched';
+                        }
+                    } catch (error) {
+                        console.error('Error fetching poster:', error);
+                        posterButton.className = 'action-button poster error';
+                        alert('Error fetching poster: ' + error.message);
+                    } finally {
+                        posterButton.disabled = false;
+                    }
+                };
+                actions.appendChild(posterButton);
+                
+                // Create finder button
+                const finderButton = document.createElement('button');
+                finderButton.className = 'action-button finder';
+                finderButton.innerHTML = '<i class="fas fa-folder-open"></i>';
+                finderButton.onclick = () => ipcRenderer.invoke('open-in-finder', movie.path);
+                actions.appendChild(finderButton);
+                
+                // Create play button
+                const playButton = document.createElement('button');
+                playButton.className = 'action-button play';
+                playButton.innerHTML = '<i class="fas fa-play"></i>';
+                playButton.onclick = () => ipcRenderer.invoke('play-in-vlc', movie.path);
+                actions.appendChild(playButton);
+                
+                // Assemble movie card
+                movieCard.appendChild(thumbnailContainer);
+                movieCard.appendChild(movieInfo);
+                movieCard.appendChild(actions);
+                
+                gridContainer.appendChild(movieCard);
+            });
+        }
 
     } catch (error) {
         console.error('Error displaying directory content:', error);
