@@ -232,14 +232,32 @@ ipcMain.handle('get-movie-folders', async (event, categoryPath) => {
                 const folderPath = path.join(categoryPath, dir.name);
                 console.log('Processing folder:', folderPath);
 
-                // Check for poster
-                const posterPath = path.join(folderPath, 'poster.jpg');
+                // Check for poster in _data folder
+                const dataDir = path.join(folderPath, '_data');
+                const posterPath = path.join(dataDir, 'poster.jpg');
                 let hasPoster = false;
                 try {
                     await fsPromises.access(posterPath);
                     hasPoster = true;
                 } catch (err) {
-                    // Poster doesn't exist
+                    // Poster doesn't exist in _data folder
+                    // Try legacy location as fallback
+                    const legacyPosterPath = path.join(folderPath, 'poster.jpg');
+                    try {
+                        await fsPromises.access(legacyPosterPath);
+                        hasPoster = true;
+                        // Move poster to _data folder
+                        try {
+                            await fsPromises.mkdir(dataDir, { recursive: true });
+                            await fsPromises.copyFile(legacyPosterPath, posterPath);
+                            await fsPromises.unlink(legacyPosterPath);
+                            console.log('Moved poster to _data folder:', posterPath);
+                        } catch (moveErr) {
+                            console.error('Error moving poster to _data folder:', moveErr);
+                        }
+                    } catch (legacyErr) {
+                        // No poster exists anywhere
+                    }
                 }
 
                 movieFolders.push({
@@ -301,8 +319,16 @@ ipcMain.handle('fetch-poster', async (event, { folderName, folderPath, forceRefe
         
         const searchHtml = await searchResponse.text();
 
+        // Create _data directory if it doesn't exist
+        const dataDir = path.join(folderPath, '_data');
+        try {
+            await fsPromises.mkdir(dataDir, { recursive: true });
+        } catch (err) {
+            if (err.code !== 'EEXIST') throw err;
+        }
+
         // Save search results for debugging
-        const debugPath = path.join(folderPath, 'imdb_search.html');
+        const debugPath = path.join(dataDir, 'imdb_search.html');
         await fsPromises.writeFile(debugPath, searchHtml);
         console.log('Saved search results to:', debugPath);
 
@@ -323,7 +349,7 @@ ipcMain.handle('fetch-poster', async (event, { folderName, folderPath, forceRefe
         const movieHtml = await movieResponse.text();
 
         // Save movie page for debugging
-        const movieDebugPath = path.join(folderPath, 'imdb_movie.html');
+        const movieDebugPath = path.join(dataDir, 'imdb_movie.html');
         await fsPromises.writeFile(movieDebugPath, movieHtml);
         console.log('Saved movie page to:', movieDebugPath);
 
@@ -343,7 +369,7 @@ ipcMain.handle('fetch-poster', async (event, { folderName, folderPath, forceRefe
         if (!imageResponse.ok) throw new Error(`Failed to download poster: ${imageResponse.status}`);
         
         const imageBuffer = await imageResponse.buffer();
-        const posterPath = path.join(folderPath, 'poster.jpg');
+        const posterPath = path.join(dataDir, 'poster.jpg');
         await fsPromises.writeFile(posterPath, imageBuffer);
 
         // Cache the poster path
