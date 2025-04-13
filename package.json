@@ -1,6 +1,6 @@
 {
-  "name": "movie-directory",
-  "version": "1.0.0",
+  "name": "movie-directory-2",
+  "version": "1.0.1",
   "description": "Movie Directory Application",
   "main": "src/main/main.js",
   "scripts": {
@@ -17,13 +17,13 @@
     "arch": "x64"
   },
   "dependencies": {
-    "cheerio": "^1.0.0",
     "electron-store": "^8.1.0",
     "imdb-api": "^4.4.1",
     "node-fetch": "^2.7.0"
   },
   "build": {
-    "appId": "com.movieplayer.app",
+    "appId": "com.movieplayer.app2",
+    "productName": "Movie Directory 2",
     "mac": {
       "icon": "build/icon.icns",
       "darkModeSupport": true,
@@ -38,7 +38,7 @@
     "directories": {
       "output": "dist"
     },
-    "artifactName": "${productName}-${version}-x64.${ext}",
+    "artifactName": "${productName}-${version}-x64-fresh.${ext}",
     "dmg": {
       "title": "Movie Directory",
       "icon": "build/icon.icns",

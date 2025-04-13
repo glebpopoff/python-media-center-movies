@@ -5,7 +5,6 @@ const fsPromises = fs.promises;
 const { exec } = require('child_process');
 const Store = require('electron-store');
 const fetch = require('node-fetch');
-const cheerio = require('cheerio');
 const https = require('https');
 
 // Store for caching poster paths
@@ -333,12 +332,12 @@ ipcMain.handle('fetch-poster', async (event, { folderName, folderPath, forceRefe
         await fsPromises.writeFile(debugPath, searchHtml);
         console.log('Saved search results to:', debugPath);
 
-        const $ = cheerio.load(searchHtml);
+        // Find first movie result using regex
+        const movieLinkMatch = searchHtml.match(/href=\"(\/title\/tt\d+)/i);
+        if (!movieLinkMatch) throw new Error('Movie not found on IMDB');
         
-        // Find first movie result
-        const movieLink = $('a[href*="/title/tt"]').first().attr('href');
+        const movieLink = movieLinkMatch[1];
         console.log('Found movie link:', movieLink);
-        if (!movieLink) throw new Error('Movie not found on IMDB');
 
         // Get movie page
         const movieUrl = `https://www.imdb.com${movieLink}`;
@@ -354,13 +353,11 @@ ipcMain.handle('fetch-poster', async (event, { folderName, folderPath, forceRefe
         await fsPromises.writeFile(movieDebugPath, movieHtml);
         console.log('Saved movie page to:', movieDebugPath);
 
-        const $movie = cheerio.load(movieHtml);
-
-        // Find poster image
-        let posterUrl = $movie('div[data-testid="hero-media__poster"] img').attr('src');
-        if (!posterUrl) {
-            posterUrl = $movie('img[class*="ipc-image"]').attr('src');
-        }
+        // Find poster image using regex
+        const posterMatch = movieHtml.match(/"hero-media__poster"[^>]*>.*?<img[^>]*src=\"([^\"]+)\"/i) ||
+                          movieHtml.match(/"ipc-image"[^>]*?src=\"([^\"]+)\"/i);
+        
+        const posterUrl = posterMatch ? posterMatch[1] : null;
 
         if (!posterUrl) throw new Error('No poster found on IMDB');
         console.log('Found poster URL:', posterUrl);
